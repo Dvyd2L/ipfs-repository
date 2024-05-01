@@ -1,0 +1,21 @@
+{
+  "name": "ipfs-repository",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@helia/unixfs": "^3.0.6",
+    "helia": "^4.2.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.1.1"
+  }
+}

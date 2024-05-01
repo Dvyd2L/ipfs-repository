@@ -1,0 +1,11 @@
+{
+    "linterOptions": {
+        "noInlineConfig": true
+    },
+    "rules": {
+        "eqeqeq": "off",
+        "no-unused-vars": "warn",
+        "no-unused-expressions": "warn",
+        "prefer-const": ["warn", { "ignoreReadBeforeAssign": true }]
+    }
+}
