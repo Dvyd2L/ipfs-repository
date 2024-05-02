@@ -1,57 +1,64 @@
-import { createHelia } from 'helia'
-import { unixfs } from '@helia/unixfs'
+import multer from 'multer'
+import express from 'express'
 
-/**
- * 
- * @param {string[]} textContents 
- */
-async function main(textContents) {
-    const helia = await createHelia(), // create a Helia node
-        fs = unixfs(helia), // create a filesystem on top of Helia, in this case it's UnixFS
-        encoder = new TextEncoder(), // turn strings into Uint8Arrays
-        decoder = new TextDecoder() // turn Uint8Arrays into strings
+const PORT = 3000
 
-    console.table([{
-        helia: helia,
-        libp2p: helia.libp2p,
-        peerId: helia.libp2p.peerId, // Our node's PeerId
-    }])
+const hashMap = new Map(),
+    storage = multer.memoryStorage(),
+    upload = multer({ storage }),
+    app = express();
 
-    while (true) {
-        const results = await Promise.all(textContents.map(async textContent => {
-            const cid = await fs.addBytes(encoder.encode(textContent, {
-                onProgress: (evt) =>
-                    console.table([{
-                        'add event type': evt.type,
-                        'add event detail': evt.detail
-                    }])
-            }), helia.blockstore), // add the bytes to your node and receive a unique content identifier
-                content = []
+class GatewayIPFS {
+    /** 
+     * @private 
+     * @readonly
+     * @type {HeliaLibp2p<Libp2p<DefaultLibp2pServices>>}
+     */
+    static #helia
+    /** 
+     * @private 
+     * @readonly
+     * @type {UnixFS}
+     */
+    static #fs
 
-            for await (const chunk of fs.cat(cid, {
-                onProgress: (evt) =>
-                    console.table([{
-                        'cat event type': evt.type,
-                        'cat event detail': evt.detail
-                    }])
-            })) {
-                content.push(decoder.decode(chunk, { stream: true }))
-            }
+    static createNodeIPFS = async () => {
+        if (!helia || !fs) {
+            const { createHelia } = await import('helia'),
+                { unixfs } = await import('@helia/unixfs')
 
-            return {
-                file: cid.toString(), // Added file
-                content: content.join(''), // Added file contents
-            }
-        }));
-
-        console.table(results)
-
-        // Esperar un tiempo antes de verificar nuevas operaciones
-        await new Promise(resolve => setTimeout(resolve, 1000));
+            this.#helia = await createHelia() // create a Helia node
+            this.#fs = unixfs(helia) // create a filesystem on top of Helia, in this case it's UnixFS
+        }
+        return { helia: this.#helia, fs: this.#fs }
     }
 }
 
-main('Probando helia para montar un servidor IPFS'.split(' ')).catch(err => {
-    console.error(err)
-    process.exit(1)
+app.use(express.json())
+
+app.get('/', async (req, res) => res.status(200).json({ message: 'server on' }))
+app.post('/ipfs/upload', upload.single('file'), async (req, res) => {
+    const { file } = req
+    try {
+        const { helia, fs } = await GatewayIPFS.createNodeIPFS(),
+            readStream = fs.createReadStream(file.path), // para files creo que no procede
+            cid = await fs.addBytes(readStream, helia.blockstore)
+        hashMap.set(file.originalname, cid)
+        res.status(201).json({ message: 'Created' })
+    } catch (error) {
+        res.status(400).json({ message: 'Bad Request' })
+    }
 })
+app.get('/ipfs/fetch', async (req, res) => {
+    const { filename } = req.body
+    try {
+        !hashMap.has(filename) && (() => { throw new Error() })()
+        const { helia, fs } = await GatewayIPFS.createNodeIPFS(),
+            cid = hashMap.get(filename),
+            readStream = fs.cat(cid)
+        readStream.pipe(res)
+    } catch (error) {
+        res.status(404).json({ message: 'Not Found' })
+    }
+})
+app.listen(PORT, () => console.info(`Server listen on port: ${PORT}`))
